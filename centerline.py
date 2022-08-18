@@ -21,7 +21,7 @@ from PIL import Image
 from tqdm import tqdm
 
 class CenterLine():
-    def __init__(self, centerline_image=None, line_dict=None, dataframe=None, associate_image=None, image_size=None):
+    def __init__(self, centerline_image=None, line_dict=None, dataframe=None, associate_image=None, image_size=None, draw_from_raw=False):
         self.centerline_image = img_as_float(centerline_image) if centerline_image is not None else None
         self.associate_image = img_as_float(associate_image) if associate_image is not None else None
         self.line_dict = line_dict # line_dict will always be created at initialization, line_dict > dataframe > centerlin_image
@@ -64,7 +64,14 @@ class CenterLine():
             self.line_dict = self.linked_line_dict
             self.centerline_image = self.draw_line_dict(line_dict=self.line_dict, image_size=image_size)
 
-        else: print("At least one of centerline_image, line_dict, and dataframe should be provided.")
+        else: 
+            if draw_from_raw:
+                print("Draw masks using skeletonization")
+                image = morphology.skeletonize(img_as_bool(associate_image))
+                joints_coords, filtered_image = self.joint_filter(image)
+                self.line_dict = self.image_to_line_dict(filtered_image)  
+                self.linking_fibers()
+                self.centerline_image=self.draw_line_dict(line_dict=self.line_dict, image_size=image_size)
 
 
     def dataframe_to_lines(self, label_csv):
