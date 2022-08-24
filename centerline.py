@@ -21,10 +21,23 @@ from PIL import Image
 from tqdm import tqdm
 
 class CenterLine():
-    def __init__(self, centerline_image=None, line_dict=None, dataframe=None, associate_image=None, image_size=None, draw_from_raw=False):
+    def __init__(self, centerline_image=None, line_dict=None, dataframe=None, associate_image=None, image_size=None, draw_from_raw=False, min_fiber_length=5):
+        """
+            args: 
+                centerline_image (array): a binary mask for the fibers
+                line_dict (dictionary): a line_dict {'line_ID': [Point]}
+                dataframe (df): check `example_annotations.csv` for reference
+                associate_image (array): a collagen image
+                image_size (tuple): (H, W)
+                draw_from_raw (bool): use skeletonization on associate_image, when other higher priority inputs are not given
+                min_fiber_length (int): minimum length of fibers kept
+            comments:
+                line_dict will always be created at initialization (None by default), the priority of inputs used to draw centerline_image
+                line_dict > dataframe > centerline_image
+        """
         self.centerline_image = img_as_float(centerline_image) if centerline_image is not None else None
         self.associate_image = img_as_float(associate_image) if associate_image is not None else None
-        self.line_dict = line_dict # line_dict will always be created at initialization, line_dict > dataframe > centerlin_image
+        self.line_dict = line_dict 
         self.linked_line_dict = None
         self.Point = namedtuple('Point', 'x y')
         self.Joint = namedtuple('Joint', 'line_ID joint_ID dir gradient')
@@ -38,6 +51,7 @@ class CenterLine():
             else:
                 image_size = (512, 512)
         self.image_size = image_size
+        self.min_fiber_length = min_fiber_length
 
         if self.line_dict is not None:
             self.centerline_image = self.draw_line_dict(line_dict=self.line_dict, image_size=image_size)
@@ -71,12 +85,15 @@ class CenterLine():
                 joints_coords, filtered_image = self.joint_filter(image)
                 self.line_dict = self.image_to_line_dict(filtered_image)  
                 self.linking_fibers()
+                self.line_dict = self.linked_line_dict
                 self.centerline_image=self.draw_line_dict(line_dict=self.line_dict, image_size=image_size)
 
 
     def dataframe_to_lines(self, label_csv):
         """
             This function generates a line_dict from a dataframe
+            args:
+                label_csv (df): check `example_annotations.csv` for reference
         """
         line_IDs = set(label_csv.iloc[:, 0])
         line_dict = {}
@@ -88,12 +105,14 @@ class CenterLine():
             line_dict[str(line_ID)].append(line_coords)
         for line_ID in line_IDs:
             line_dict[str(line_ID)] = self.Line(points=line_dict[str(line_ID)], head=-1, tail=-1)
-        self.sort_line_dict(line_dict)
+        line_dict = self.sort_line_dict(line_dict)
         return line_dict
 
     def mat_to_lines(self, mat_data):
         """
             This function generates a line_dict from a matlab mat file produced by ctFIRE.
+            args:
+                mat_data (dictionary): read from .mat file, check `centerline-baselines.ipynb` for reference
         """
         mat_data_Fa = mat_data['Fa']
         mat_data_xa = mat_data['Xa'][0][0]  
@@ -104,29 +123,36 @@ class CenterLine():
                 line_coords = self.Point(float(mat_data_xa[id-1, 0]), float(mat_data_xa[id-1, 1]))
                 line_dict[str(k)].append(line_coords)
             line_dict[str(k)] = self.Line(points=line_dict[str(k)], head=-1, tail=-1)
-        self.sort_line_dict(line_dict)
+        line_dict = self.sort_line_dict(line_dict)
         return line_dict
 
     def image_to_line_dict(self, filtered_image):
         """
-            This function takes a centerline image (joint filtered) and return a line_dict, noted that this is lossy
+            This function takes a fiber mask (joints filtered) and return a line_dict, note that this is lossy
+            args:
+                fibered_image (array): a fiber mask (joints filtered)
         """
         labeled = label(filtered_image, connectivity=2)
         regions = regionprops(labeled)
         line_dict = {}
         # return_regions = []
         for idx, region in enumerate(regions):
-            if region.area<2: continue
+            if region.area<self.min_fiber_length: continue
             points = [self.Point(x=coord[1], y=coord[0]) for coord in region.coords]
             line_dict[str(idx)] = self.Line(points=points, head=-1, tail=-1)
             # return_regions.append(region)
-        self.sort_line_dict(line_dict)
+        line_dict = self.sort_line_dict(line_dict)
         return line_dict
 
 
     def joint_filter(self, image):
         """
-            This function takes a centerline image (numpy array) and replace joints with 0
+            This function takes a fiber mask and replace joints with 0
+            args:
+                image (array): a fiber mask
+            returns:
+                array: coordinates of joints in an array [N, i, j]
+                array: fiber masks (joints filtered)
         """
         image = img_as_float(image)
         coords = []
@@ -160,7 +186,11 @@ class CenterLine():
 
     def sort_points(self, input_points):
         """
-            This function sorts points of a line in spatial order and returns a set of sorted points
+            This function sorts points of a line in spatial order and returns a set of sorted points (that can be connected sequentially)
+            args:
+                input_points ([Point]): list of Point objects
+            returns:
+                [Point]: list of Point objects
         """
         sorted_points = []
         unsorted_points = input_points
@@ -185,17 +215,26 @@ class CenterLine():
 
     def sort_line_dict(self, line_dict):
         """
-            This function sorts points of all lines in a line_dict in-place
+            This function sorts points of all lines in a line_dict and return copy
         """
+        points_dist = lambda pt_0, pt_1 : math.sqrt((pt_0.x-pt_1.x)**2 + (pt_0.y-pt_1.y)**2)
+        sorted_line_dict = {}
         for k, v in line_dict.items():
             points = v.points
             sorted_points = self.sort_points(points)
             v = v._replace(points=sorted_points)
-            line_dict[k] = v
+            if points_dist(points[0], points[-1]) > 3 or len(points) >= self.min_fiber_length:
+                sorted_line_dict[k] = v
+        return sorted_line_dict
 
     def draw_line(self, points, image, offset=(0, 0)):
         """
             This function draws a set of points that defines a centerline on a image (in-place)
+            args:
+                points ([Point]): list of Point objects
+                image (array): a canvas to draw a line
+            returns:
+                array: a drawing
         """
         points_x = [point.x-offset[0] for point in points]
         points_y = [point.y-offset[1] for point in points]
@@ -221,9 +260,9 @@ class CenterLine():
         return image  
 
 
-    def draw_line_dict(self, line_dict, image_size=(512, 512), min_size=5):
+    def draw_line_dict(self, line_dict, image_size=(512, 512)):
         """
-            This function draws a line_dict on an image
+            This function draws a line_dict on an image and returns the drawing
         """
         image = np.zeros((image_size[0], image_size[1]), np.uint8)
         for k, v in line_dict.items():
@@ -233,13 +272,15 @@ class CenterLine():
         image = img_as_ubyte(transform.resize(image, (image_size[0], image_size[1]), order=0, anti_aliasing=True))
         _, image = cv2.threshold(image,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
         image = morphology.skeletonize(img_as_bool(image))
-        image = morphology.remove_small_objects(image, min_size=min_size, connectivity=2)
+        image = morphology.remove_small_objects(image, min_size=self.min_fiber_length, connectivity=2)
         return image
 
 
     def line_gradient(self, line, start=-1): # -1 point backwards
         """
             This function computes the outwards angle at either end of a centerline
+            args:
+                line ([Point]): a list of sorted Point objects that define a line
         """
         points_angle = lambda pt_1, pt_2 : math.atan2((pt_1.y-pt_2.y), (pt_1.x-pt_2.x)) # point to first point
         points_dist = lambda pt_1, pt_2 : math.sqrt((pt_1.x-pt_2.x)**2 + (pt_1.y-pt_2.y)**2)
@@ -257,7 +298,7 @@ class CenterLine():
 
     def connect_lines(self, line_dict):
         """
-            This function connects centerlines based on their tail/head connectivities
+            This function connects centerlines based on their tail/head matches
         """
         count = 0
         line_dict_copy = line_dict.copy()
@@ -291,8 +332,11 @@ class CenterLine():
 
     def linking_fibers(self, line_dict=None, joint_thresh=3, angle_thresh=60):
         """
-            This function takes joins close fragments of the line_dict and return a line_dict with linked fibers. 
-            Close end points with similar incident angles will be connected.
+            This function takes a line_dict (joints filtered) and return a line_dict with linked fibers. 
+            Fiber end points with similar incident angles at the same joint will be connected.
+            args:
+                joint_thresh (int): radius within a joint to search for fiber end points
+                angle_thresh (int): maximum angle degree of two connectable fiber end points
         """
         if line_dict is None:
             line_dict = self.line_dict.copy()
@@ -383,12 +427,14 @@ class CenterLine():
             tails = max([int(v.tail) for k, v in line_dict_copy.items()])
             if max_attemp > 10:
                 break
-        self.sort_line_dict(line_dict_copy)
+        line_dict_copy = self.sort_line_dict(line_dict_copy)
         self.linked_line_dict = line_dict_copy
 
     def export_line_dict(self, fname, line_dict=None):
         """
             This function exports a line_dict as a csv file. The format follows ImageJ ridge_detector results.
+            args:
+                fname (string): file path for saving
         """
         if line_dict is None:
             line_dict = self.line_dict
@@ -427,52 +473,8 @@ class CenterLine():
                 line_coords = self.Point(float(x_coords[i]), float(y_coords[i]))
                 line_dict[str(id)].append(line_coords)
             line_dict[str(id)] = self.Line(points=line_dict[str(id)], head=-1, tail=-1)
-        self.sort_line_dict(line_dict)
+        line_dict = self.sort_line_dict(line_dict)
         return line_dict
-
-
-    def compute_feats(self, image=None, smooth_sigma=2):
-        """
-            This function takes a centerline image (numpy array) and return centerline features and individual fragments
-        """
-        # compute cirvar, cirmean, lenvar, lenmean, num_segs, alignment coefficient (normalized)
-        points_dist = lambda pt_0, pt_1 : math.sqrt((pt_0.x-pt_1.x)**2 + (pt_0.y-pt_1.y)**2)
-        segment_angle = lambda segment : math.atan2((segment.point_1.y-segment.point_0.y), (segment.point_1.x-segment.point_0.x)) #* 180 / math.pi
-        if image is None:
-            image = image.copy()
-        else:
-            image = self.image.copy()
-        lines = probabilistic_hough_line(image, threshold=1, line_length=2, line_gap=0, seed=0)
-        angles = []
-        lengths = []
-        joints, filtered = self.joint_filter(image)
-        _, regions = self.image_to_line_dict(filtered)
-        line_lengths = np.asarray([region.area for region in regions if region.area>3])
-        for line in lines:
-            p0, p1 = line # (x1, y1), (x2, y2)
-            if p0[0]<=p1[0]:
-                point_0 = self.Point(p0[0], p0[1])
-                point_1 = self.Point(p1[0], p1[1])
-            if p0[0]>p1[0]:
-                point_1 = self.Point(p0[0], p0[1])
-                point_0 = self.Point(p1[0], p1[1])
-            segment = self.Segment(point_0, point_1, points_dist(point_0, point_1))
-            angles.append(segment_angle(segment))
-            lengths.append(segment.length)
-            
-        density = smooth_mask(image)
-        if len(lines)>0:
-            angles_norm = norm_counts(angles, lengths)
-            cirmean = stats.circmean(angles_norm, high=math.pi/2, low=-math.pi/2)
-            cirvar = stats.circvar(angles_norm, high=math.pi/2, low=-math.pi/2)
-            lenmean = np.mean(line_lengths) + joints.shape[0]/np.count_nonzero(image)
-            lenvar = np.var(line_lengths/lenmean)
-            intensity = np.count_nonzero(image)
-            feats = {'cir_mean' : cirmean, 'cir_var' : cirvar, 'len_mean' : lenmean, 'len_var' : lenvar, 'intensity' : intensity, 'density' : density}
-        else:
-            feats = {'cir_mean' : 1, 'cir_var' : 1, 'len_mean' : 1, 'len_var' : 1, 'intensity' : 1, 'density' : density}
-        self.feats = feats
-        self.regions
 
     def single_fiber_feats(self, fragments):
         points_dist = lambda pt_0, pt_1 : math.sqrt((pt_0.x-pt_1.x)**2 + (pt_0.y-pt_1.y)**2)
@@ -514,9 +516,12 @@ class CenterLine():
         waviness = np.tanh(waviness*2)
         return seg_angles, seg_lengths, waviness
 
-    def compute_fiber_feats(self, min_fiber_length=5, seg_length=4, smooth_sigma=2):
+    def compute_fiber_feats(self, seg_length=4, smooth_sigma=2):
         """
             This function computes centerline features from the centerline_image
+            args:
+                seg_length (int): the mean of segment length used to fit each fiber
+                smooth_sigma (int): smoothing factor for soft mask
         """
         # compute cirvar, cirmean, lenvar, lenmean, num_segs, alignment coefficient (normalized)
         points_dist = lambda pt_0, pt_1 : math.sqrt((pt_0.x-pt_1.x)**2 + (pt_0.y-pt_1.y)**2)
@@ -544,10 +549,8 @@ class CenterLine():
             labeled = label(image, connectivity=2)
             regions = regionprops(labeled)
             line_regions.extend(regions)
-        line_regions = [i for i in line_regions if i.area>=min_fiber_length]
+        line_regions = [i for i in line_regions if i.area>=self.min_fiber_length]
         for region in line_regions:   
-            # fragments = probabilistic_hough_line(region.image, threshold=1, line_length=2, line_gap=0, seed=0)
-            # region_image = np.pad(region, (1, 1))
             points = [self.Point(point[1]+1, point[0]+1) for point in region.coords]
             points = self.sort_points(points)
             shape_line = LineString([(point.x, point.y) for point in points])
@@ -556,36 +559,10 @@ class CenterLine():
             splitter = MultiPoint([shape_line.interpolate(i) for i in split_points])
             if len(splitter) < 1: fragments = [shape_line]
             else: fragments = split(shape_line, splitter)
-            # compute waviness
-            # seg_angles = []
-            # seg_lengths = []
-            # for fragment in fragments:
-            #     # p0, p1 = fragment # (x1, y1), (x2, y2)
-            #     sx, sy = fragment.coords.xy[0][0], fragment.coords.xy[1][0]
-            #     ex, ey = fragment.coords.xy[0][-1], fragment.coords.xy[1][-1]
-            #     # if sx <= ex:
-            #     point_0 = self.Point(sx, sy)
-            #     point_1 = self.Point(ex, ey)
-            #     # if sx > ex:
-            #         # point_1 = self.Point(sx, sy)
-            #         # point_0 = self.Point(ex, ey)
-            #     seg = self.Segment(point_0, point_1, points_dist(point_0, point_1))
-            #     seg_angle = segment_angle(seg)
-            #     seg_length = seg.length
-            #     seg_angles.append(seg_angle)
-            #     seg_lengths.append(seg_length)
-            #     # for computing global attribute
-            #     angles.append(seg_angle)
-            #     lengths.append(seg_length)
             seg_angles, seg_lengths, wav = self.single_fiber_feats(fragments)
             angles.extend(seg_angles)
             lengths.extend(seg_lengths)
             full_lengths.append(region.area)
-            # if len(seg_angles) > 1:
-            #     seg_angles = norm_counts(seg_angles, seg_lengths)
-            #     waviness.append(stats.circvar(seg_angles, high=math.pi/2, low=-math.pi/2))
-            # else:
-                # single_segment += 1
             waviness.append(wav)
             
         if smooth_sigma > 0: density = smooth_mask(self.centerline_image, smooth_sigma=smooth_sigma)
@@ -613,7 +590,10 @@ class CenterLine():
 
 
     
-def smooth_mask(mask, smooth_sigma=3):
+def smooth_mask(mask, smooth_sigma=2):
+    """
+        This function returns a soften mask from a binary mask.
+    """
     mask = img_as_float(mask)
     mask = exposure.rescale_intensity(mask, out_range=(0, 1))
     density = exposure.rescale_intensity(filters.gaussian(  mask,
@@ -626,7 +606,10 @@ def smooth_mask(mask, smooth_sigma=3):
 
 def norm_counts(counts, weights, beta=0.1):
     """
-        This function returns a set of normalized counts, based on the weights of bins
+        This function returns a set of reweighted counts, based on the weights of bins
+        args:
+            counts ([int]): histogram to be reweighted
+            weights ([float]): weights for the bins
     """
     weights = [i+beta for i in weights] # smooth
     weights = [i/ min(weights) for i in weights]

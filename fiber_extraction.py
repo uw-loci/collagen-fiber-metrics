@@ -160,5 +160,5 @@ class FiberExtractor():
             results = results.squeeze()
             centerline_res = CenterLine(associate_image=results, draw_from_raw=True)
             self.results = centerline_res.centerline_image
-            return centerline_res.centerline_image
+            return self.results
 
