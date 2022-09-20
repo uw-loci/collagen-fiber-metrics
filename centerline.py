@@ -81,6 +81,7 @@ class CenterLine():
         else: 
             if draw_from_raw:
                 print("Draw masks using skeletonization")
+                associate_image = exposure.rescale_intensity(associate_image*1.0, out_range=(0, 2))
                 image = morphology.skeletonize(img_as_bool(associate_image))
                 joints_coords, filtered_image = self.joint_filter(image)
                 self.line_dict = self.image_to_line_dict(filtered_image)  
