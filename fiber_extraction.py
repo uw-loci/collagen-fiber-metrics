@@ -112,14 +112,15 @@ class OutConv(nn.Module):
     
 
 class FiberExtractor():
-    def __init__(self, net, file_list=None):
+    def __init__(self, net):
         self.net = net.eval()
         self.file_list = None
         self.norm_range = None
 
-    def normalization_range(self, p=(0, 100)):
+    def normalization_range(self, p=(0, 100), file_list=None):
         max_val = 0
         min_val = 0
+        self.file_list = file_list
         for fname in self.file_list:
             im_arr = io.imread(fname)
             max_val += np.percentile(im_arr, p[0])
@@ -136,27 +137,12 @@ class FiberExtractor():
                 norm_range = self.norm_range
             im_arr = exposure.rescale_intensity(im_arr, in_range=(norm_range[0], norm_range[1]), out_range=(0, 1))
             if adjust_contrast:
-                im_arr = [exposure.adjust_gamma(im_arr, i/100) for i in range(20, 220, 25)]
-                im_tensor = torch.from_numpy(np.dstack(im_arr).transpose(2, 0, 1))
+                im_arr = [adjust_contrast(im_arr)]
             else:
                 im_arr = [im_arr]
-                im_tensor = torch.from_numpy(np.vstack(im_arr))[None, :]
+            im_tensor = torch.from_numpy(np.vstack(im_arr))[None, :]
             outputs_tensor = self.net(im_tensor.float()[:, None])
-            outputs = outputs_tensor.cpu().numpy()
-            if adjust_contrast=='gamma':
-                results = np.mean(outputs, 0)
-            elif adjust_contrast=='high':
-                weights = np.array([4, 5, 5, 4, 3, 2, 1, 0])
-                weights = weights / weights.sum()
-                results = weights[:, None, None, None] * outputs
-                results = np.sum(results, 0)
-            elif adjust_contrast=='low':
-                weights = np.array([0, 1, 2, 3, 4, 5, 5, 4])
-                weights = weights / weights.sum()
-                results = weights[:, None, None, None] * outputs
-                results = np.sum(results, 0)
-            else:
-                results = outputs 
+            results = outputs_tensor.cpu().numpy()
             results = results.squeeze()
             centerline_res = CenterLine(associate_image=results, draw_from_raw=True)
             self.results = centerline_res.centerline_image

@@ -9,16 +9,16 @@ import numpy as np
 from scipy.interpolate import UnivariateSpline
 import cv2
 import random
-from skimage import morphology, img_as_bool, transform, img_as_ubyte, img_as_float, exposure, filters
+from skimage import morphology, img_as_bool, transform, img_as_ubyte, img_as_float, img_as_uint, exposure, filters, io
 from skimage.measure import label, regionprops
-from skimage.transform import probabilistic_hough_line
 from scipy import stats
 from shapely.geometry import LineString, MultiPoint
 from shapely.ops import split
 from ridge_detection.lineDetector import LineDetector
 from ridge_detection.params import Params,load_json
 from PIL import Image
-from tqdm import tqdm
+import matplotlib.pyplot as plt
+import colorsys
 
 class CenterLine():
     def __init__(self, centerline_image=None, line_dict=None, dataframe=None, associate_image=None, image_size=None, draw_from_raw=False, min_fiber_length=5):
@@ -26,14 +26,14 @@ class CenterLine():
             args: 
                 centerline_image (array): a binary mask for the fibers
                 line_dict (dictionary): a line_dict {'line_ID': [Point]}
-                dataframe (df): check `example_annotations.csv` for reference
-                associate_image (array): a collagen image
+                dataframe (df): check `example_annotations.csv` for reference. this can be an csv generated using ridge-detection plugin in FIJI
+                associate_image (array): a collagen image associated with the mask (optional)
                 image_size (tuple): (H, W)
-                draw_from_raw (bool): use skeletonization on associate_image, when other higher priority inputs are not given
+                draw_from_raw (bool): use skeletonization direcly on associate_image when other higher priority inputs are not given
                 min_fiber_length (int): minimum length of fibers kept
             comments:
-                line_dict will always be created at initialization (None by default), the priority of inputs used to draw centerline_image
-                line_dict > dataframe > centerline_image
+                line_dict will always be created at initialization (None by default), the priority of inputs used to draw centerline_image:
+                line_dict > dataframe > centerline_image > associate_image (use skeletonization)
         """
         self.centerline_image = img_as_float(centerline_image) if centerline_image is not None else None
         self.associate_image = img_as_float(associate_image) if associate_image is not None else None
@@ -589,6 +589,35 @@ class CenterLine():
         self.feats = feats
         self.regions = line_regions
 
+    def create_overlay(self, figsize=(20, 20)):
+        assert self.associate_image is not None
+        assert self.line_dict is not None
+        fig, ax = plt.subplots(1, 3, figsize=figsize)
+        ax[0].imshow(self.associate_image, cmap=plt.cm.gray)
+        canvas = np.ones((self.image_size[0], self.image_size[1], 3), np.uint8) * 0
+        line_dict = self.line_dict
+        for k, v in line_dict.items():
+            points = v.points
+            image = np.zeros((512, 512), np.uint8)
+            image = self.draw_line(points, image)
+            (r, g, b) = colorsys.hsv_to_rgb(np.random.uniform(0, 1), 1.0, 1.0)
+            R, G, B = int(255 * r), int(255 * g), int(255 * b)
+            canvas[np.where(image>0)] = np.array([R, G, B])
+        ax[1].imshow(canvas)
+
+        ### overlay
+        im_arr = self.associate_image
+        canvas = img_as_ubyte(np.repeat(im_arr[:, :, np.newaxis], 3, axis=2)) 
+        line_dict = self.line_dict
+        for k, v in line_dict.items():
+            points = v.points
+            image = np.zeros((512, 512), np.uint8)
+            image = self.draw_line(points, image)
+            (r, g, b) = colorsys.hsv_to_rgb(np.random.uniform(0, 1), 1.0, 1.0)
+            R, G, B = int(255 * r), int(255 * g), int(255 * b)
+            canvas[np.where(image>0)] = np.array([R, G, B])
+        ax[2].imshow(canvas)
+        plt.show()
 
     
 def smooth_mask(mask, smooth_sigma=2):
