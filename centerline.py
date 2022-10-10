@@ -355,7 +355,7 @@ class CenterLine():
             line_dict = line_dict.copy()
         end_points = [[item.points[0], item.points[-1]] for key, item in line_dict.items()]
         if len(end_points) < 2:
-            self.linked_line_dict = line_dict_copy
+            self.linked_line_dict = line_dict
             return
         end_points = reduce(lambda x1, x2 : x1+x2, end_points) # flatten
         close_points = lambda pt_1, pt_2, dist_thresh : math.sqrt((pt_1.x-pt_2.x)**2 + (pt_1.y-pt_2.y)**2) < dist_thresh
