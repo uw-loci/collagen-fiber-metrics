@@ -88,9 +88,7 @@ class CenterLine():
                 image = morphology.skeletonize(img_as_bool(associate_image))
                 joints_coords, filtered_image = self.joint_filter(image)
                 self.line_dict = self.image_to_line_dict(filtered_image)  
-                self.linking_fibers()
-                self.line_dict = self.linked_line_dict
-                self.centerline_image=self.draw_line_dict(line_dict=self.line_dict, image_size=image_size)
+                relink_fiber = True
 
         if relink_fiber:
             self.linking_fibers()
@@ -355,6 +353,9 @@ class CenterLine():
         else:
             line_dict = line_dict.copy()
         end_points = [[item.points[0], item.points[-1]] for key, item in line_dict.items()]
+        if len(end_points) < 2:
+            self.linked_line_dict = line_dict_copy
+            return
         end_points = reduce(lambda x1, x2 : x1+x2, end_points) # flatten
         close_points = lambda pt_1, pt_2, dist_thresh : math.sqrt((pt_1.x-pt_2.x)**2 + (pt_1.y-pt_2.y)**2) < dist_thresh
         
