@@ -21,19 +21,27 @@ import matplotlib.pyplot as plt
 import colorsys
 
 class CenterLine():
-    def __init__(self, centerline_image=None, line_dict=None, dataframe=None, associate_image=None, image_size=None, draw_from_raw=False, min_fiber_length=5):
+    def __init__(self, 
+        centerline_image=None, 
+        line_dict=None, 
+        dataframe=None, 
+        associate_image=None, 
+        image_size=None, 
+        draw_from_raw=False, 
+        min_fiber_length=5, 
+        relink_fiber=False):
         """
             args: 
                 centerline_image (array): a binary mask for the fibers
                 line_dict (dictionary): a line_dict {'line_ID': [Point]}
-                dataframe (df): check `example_annotations.csv` for reference. this can be an csv generated using ridge-detection plugin in FIJI
-                associate_image (array): a collagen image associated with the mask (optional)
+                dataframe (df): check `example_annotations.csv` for reference
+                associate_image (array): a collagen image
                 image_size (tuple): (H, W)
-                draw_from_raw (bool): use skeletonization direcly on associate_image when other higher priority inputs are not given
+                draw_from_raw (bool): use skeletonization on associate_image, when other higher priority inputs are not given
                 min_fiber_length (int): minimum length of fibers kept
             comments:
-                line_dict will always be created at initialization (None by default), the priority of inputs used to draw centerline_image:
-                line_dict > dataframe > centerline_image > associate_image (use skeletonization)
+                line_dict will always be created at initialization (None by default), the priority of inputs used to draw centerline_image
+                line_dict > dataframe > centerline_image
         """
         self.centerline_image = img_as_float(centerline_image) if centerline_image is not None else None
         self.associate_image = img_as_float(associate_image) if associate_image is not None else None
@@ -56,16 +64,6 @@ class CenterLine():
         if self.line_dict is not None:
             self.centerline_image = self.draw_line_dict(line_dict=self.line_dict, image_size=image_size)
 
-        elif self.line_dict is None and self.centerline_image is not None:
-            """
-                Create a line_dict from the centerline_image if line_dict is not given
-            """
-            joints_coords, filtered_image = self.joint_filter(centerline_image) # masks have joints
-            self.line_dict = self.image_to_line_dict(filtered_image)
-            self.linking_fibers()
-            self.line_dict = self.linked_line_dict
-            self.centerline_image = self.draw_line_dict(line_dict=self.line_dict, image_size=image_size) # stored masks have joints
-
         elif self.line_dict is None and dataframe is not None:
             """
                 Create a line_dict from the dataframe if line_dict is not given
@@ -73,10 +71,15 @@ class CenterLine():
             line_dict = self.dataframe_to_lines(dataframe)
             centerline_image = self.draw_line_dict(line_dict, image_size=image_size)
             joints_coords, filtered_image = self.joint_filter(centerline_image)
-            self.line_dict = self.image_to_line_dict(filtered_image)  
-            self.linking_fibers()
-            self.line_dict = self.linked_line_dict
-            self.centerline_image = self.draw_line_dict(line_dict=self.line_dict, image_size=image_size)
+            self.line_dict = self.image_to_line_dict(filtered_image)
+            self.centerline_image = centerline_image  
+        
+        elif self.line_dict is None and centerline_image is not None:
+            """
+                Create a line_dict from the centerline_image if line_dict is not given
+            """
+            joints_coords, filtered_image = self.joint_filter(centerline_image) # masks have joints
+            self.line_dict = self.image_to_line_dict(filtered_image)
 
         else: 
             if draw_from_raw:
@@ -88,6 +91,11 @@ class CenterLine():
                 self.linking_fibers()
                 self.line_dict = self.linked_line_dict
                 self.centerline_image=self.draw_line_dict(line_dict=self.line_dict, image_size=image_size)
+
+        if relink_fiber:
+            self.linking_fibers()
+            self.line_dict = self.linked_line_dict
+            self.centerline_image = self.draw_line_dict(line_dict=self.line_dict, image_size=image_size)
 
 
     def dataframe_to_lines(self, label_csv):
@@ -289,7 +297,10 @@ class CenterLine():
             line = list(reversed(line))
         angle = points_angle(line[0], line[1]) # point to first point
         if len(line)>2:
-            decay = points_dist(line[0], line[1])/(points_dist(line[1], line[2])+points_dist(line[0], line[1]))
+            if (points_dist(line[1], line[2])+points_dist(line[0], line[1]))==0:
+                decay = points_dist(line[0], line[1])/1
+            else:
+                decay = points_dist(line[0], line[1])/(points_dist(line[1], line[2])+points_dist(line[0], line[1]))
             delta_x = line[1].x + decay*(line[2].x - line[1].x) + decay**2*(line[2].x - line[0].x)
             delta_y = line[1].y + decay*(line[2].y - line[1].y) + decay**2*(line[2].y - line[0].y)
             angle = points_angle(line[0], self.Point(delta_x, delta_y))
@@ -527,9 +538,10 @@ class CenterLine():
         # compute cirvar, cirmean, lenvar, lenmean, num_segs, alignment coefficient (normalized)
         points_dist = lambda pt_0, pt_1 : math.sqrt((pt_0.x-pt_1.x)**2 + (pt_0.y-pt_1.y)**2)
         segment_angle = lambda segment : math.atan2((segment.point_1.y-segment.point_0.y), (segment.point_1.x-segment.point_0.x)) #* 180 / math.pi
-        _, filtered_image = self.joint_filter(self.centerline_image)
-        line_dict = self.image_to_line_dict(filtered_image)
-        self.linking_fibers(line_dict)
+        # _, filtered_image = self.joint_filter(self.centerline_image)
+        # line_dict = self.image_to_line_dict(filtered_image)
+        # self.linking_fibers(line_dict)
+        line_dict = self.line_dict
         line_regions = []
         angles = []
         lengths = []
