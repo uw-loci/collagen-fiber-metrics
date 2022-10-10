@@ -72,7 +72,8 @@ class CenterLine():
             centerline_image = self.draw_line_dict(line_dict, image_size=image_size)
             joints_coords, filtered_image = self.joint_filter(centerline_image)
             self.line_dict = self.image_to_line_dict(filtered_image)
-            self.centerline_image = centerline_image  
+            self.centerline_image = centerline_image
+            relink_fiber=True  
         
         elif self.line_dict is None and centerline_image is not None:
             """
