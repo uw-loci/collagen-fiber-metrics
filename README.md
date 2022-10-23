@@ -4,17 +4,17 @@ This repository is part of the paper **"Variational auto-encoder for collagen fi
 * [DuoVAE](https://github.com/hjoonpark/DuoVAE)  
 
 <div align="left">
-  <img src="https://github.com/hjoonpark/DuoVAE/blob/main/etc/figures/duovae_all_loop.gif" width="300px" />
+  <img src="https://github.com/hjoonpark/DuoVAE/blob/main/etc/figures/duovae_all_loop.gif" width="400px" />
 </div>
 
 * [Collagen fiber synthesis and extraction networks](https://github.com/hjoonpark/collagen-fiber-centerline-extraction)
 
 <div align="left">
-  <img src="https://github.com/hjoonpark/collagen-fiber-centerline-extraction/blob/main/thumbnails/illustration.png" width="600px" />
+  <img src="https://github.com/hjoonpark/collagen-fiber-centerline-extraction/blob/main/thumbnails/illustration.png" width="800px" />
 </div>
 
 ## Installation
-Install [anaconda/miniconda](https://docs.conda.io/en/latest/miniconda.html)  
+**Install [anaconda/miniconda](https://docs.conda.io/en/latest/miniconda.html)**  
 ```
   $ conda env create --name collagen --file env.yml
   $ conda activate collagen
