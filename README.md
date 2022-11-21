@@ -10,7 +10,7 @@ This repository is part of the paper **"Variational auto-encoder for collagen fi
 * [Collagen fiber synthesis and extraction networks](https://github.com/hjoonpark/collagen-fiber-centerline-extraction)
 
 <div align="left">
-  <img src="https://github.com/hjoonpark/collagen-fiber-centerline-extraction/blob/main/thumbnails/illustration.png" width="800px" />
+  <img src="https://github.com/hjoonpark/collagen-fiber-centerline-extraction/blob/main/etc/figures/pipeline.png?raw=true" width="800px" />
 </div>
 
 ## Installation
