@@ -1,6 +1,6 @@
 # Collagen fiber extraction and analysis in cancer tissue microenvironment  
-This repository is part of the paper **"Variational auto-encoder for collagen fiber centerline generation and extraction in fibrotic cancer tissues"**. _Medical Image Analysis (under review)_  
-### Related repository: 
+This repository is part of the paper **"Collagen Fiber Centerline Tracking in Fibrotic Tissue via Deep Neural Networks with Variational Autoencoder-based Synthetic Training Data Generation"**. _Medical Image Analysis (Accepted)_  
+### Related repositories: 
 * [DuoVAE](https://github.com/hjoonpark/DuoVAE)  
 
 <div align="left">
