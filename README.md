@@ -1,5 +1,10 @@
 # Collagen fiber extraction and analysis in cancer tissue microenvironment  
-This repository is part of the paper **"Collagen Fiber Centerline Tracking in Fibrotic Tissue via Deep Neural Networks with Variational Autoencoder-based Synthetic Training Data Generation"**. _Medical Image Analysis (Accepted)_  
+This repository is part of the paper 
+
+[**Collagen Fiber Centerline Tracking in Fibrotic Tissue via Deep Neural Networks with Variational Autoencoder-based Synthetic Training Data Generation**](https://www.sciencedirect.com/science/article/pii/S1361841523002219),\
+Hyojoon Park, Bin Li, Yuming Liu, Michael S. Nelson, Helen M. Wilson, Eftychios Sifakis, Kevin W. Eliceiri, \
+Medical Image Analysis 2023.
+
 ### Related repositories: 
 * [DuoVAE](https://github.com/hjoonpark/DuoVAE)  
 
@@ -72,3 +77,15 @@ Compute the normalization range for 16-bit images. `file_list` is a list of dire
     fiber_extractor.normalization_range(file_list=file_list)
 ```
  This function computes the range in the 16-bit image set to be stretched to the range of `(0, 65535)`.  
+
+## Citation
+
+    @article{park2023collagen,
+             title={Collagen fiber centerline tracking in fibrotic tissue via deep neural networks with variational autoencoder-based synthetic training data generation},
+             author={Park, Hyojoon and Li, Bin and Liu, Yuming and Nelson, Michael S and Wilson, Helen M and Sifakis, Eftychios and Eliceiri, Kevin W},
+             journal={Medical Image Analysis},
+             volume={90},
+             pages={102961},
+             year={2023},
+             publisher={Elsevier}
+    }
